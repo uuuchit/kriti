@@ -152,8 +152,8 @@ class Script2VideoNarrationPipeline(Script2VideoPipeline):
 
         If narration > 8s, generates multiple Veo segments using the last frame
         of each segment as the first frame of the next for visual continuity.
-        For the final segment, uses last_frame.png (if available) as Veo's
-        last_frame target so the shot lands on the intended end state.
+        Generates video segments for a single shot using Veo, chaining
+        segments via last-frame extraction for visual continuity.
         """
         shot_dir = os.path.join(self.working_dir, "shots", f"{shot_description.idx}")
         video_path = os.path.join(shot_dir, "video.mp4")
@@ -161,20 +161,18 @@ class Script2VideoNarrationPipeline(Script2VideoPipeline):
             print(f"🚀 Skipped generating video for shot {shot_description.idx}, already exists.")
             return
 
-        await self.frame_events[shot_description.idx]["first_frame"].wait()
-        if shot_description.variation_type in ("medium", "large"):
-            if shot_description.idx in self.frame_events and "last_frame" in self.frame_events[shot_description.idx]:
-                await self.frame_events[shot_description.idx]["last_frame"].wait()
+        try:
+            await asyncio.wait_for(self.frame_events[shot_description.idx]["first_frame"].wait(), timeout=300)
+        except asyncio.TimeoutError:
+            print(f"  ⏰ Shot {shot_description.idx}: first_frame wait timed out, skipping video gen")
+            return
 
         first_frame = os.path.join(shot_dir, "first_frame.png")
-        last_frame = os.path.join(shot_dir, "last_frame.png")
-        has_last_frame = os.path.exists(last_frame)
-
         narration_dur = self._shot_durations.get(shot_description.idx, DEFAULT_SHOT_DURATION)
         segments = self._plan_segments(narration_dur)
-        prompt = shot_description.motion_desc + "\n" + shot_description.audio_desc
+        base_prompt = shot_description.motion_desc
 
-        print(f"🎬 Shot {shot_description.idx}: narration={narration_dur:.1f}s → segments={segments} (total={sum(segments)}s) last_frame={'✅' if has_last_frame else '❌'}")
+        print(f"🎬 Shot {shot_description.idx}: narration={narration_dur:.1f}s → segments={segments} (total={sum(segments)}s)")
 
         seg_paths = []
         ref_frame = first_frame
@@ -182,21 +180,23 @@ class Script2VideoNarrationPipeline(Script2VideoPipeline):
             seg_path = os.path.join(shot_dir, f"video_{seg_i}.mp4")
             is_last_seg = (seg_i == len(segments) - 1)
 
+            # Segment-aware prompting
+            if len(segments) == 1:
+                prompt = base_prompt
+            elif seg_i == 0:
+                prompt = base_prompt + "\nThis is the opening of the shot. Begin the camera movement described above."
+            elif is_last_seg:
+                prompt = base_prompt + "\nThis is the final part of the shot. Complete the camera movement. Settle into the ending composition."
+            else:
+                prompt = base_prompt + f"\nThis is a continuation (part {seg_i+1}/{len(segments)}). The camera movement is in progress — keep it flowing smoothly."
+
             if os.path.exists(seg_path):
                 print(f"  🚀 Segment {seg_i} already exists.")
             else:
-                # For final segment: use last_frame as Veo target if available
-                # Note: Veo interpolation (first+last frame) requires 8s duration
-                if is_last_seg and has_last_frame and seg_dur == 8:
-                    ref_images = [ref_frame, last_frame]
-                    print(f"  🎬 Generating segment {seg_i} ({seg_dur}s) with last_frame target...")
-                else:
-                    ref_images = [ref_frame]
-                    print(f"  🎬 Generating segment {seg_i} ({seg_dur}s)...")
-
+                print(f"  🎬 Generating segment {seg_i} ({seg_dur}s)...")
                 video_output = await self.video_generator.generate_single_video(
                     prompt=prompt,
-                    reference_image_paths=ref_images,
+                    reference_image_paths=[ref_frame],
                     duration=seg_dur,
                 )
                 video_output.save(seg_path)
@@ -283,22 +283,40 @@ class Script2VideoNarrationPipeline(Script2VideoPipeline):
             for c in camera_tree
             if c.parent_cam_idx is not None
         ]
-        tasks = [
-            self.generate_frames_for_single_camera(
+        # Wrap each task with name, timeout, and error logging
+        async def _run_named(name, coro):
+            try:
+                print(f"  ▶ {name} started")
+                result = await asyncio.wait_for(coro, timeout=600)  # 10 min per task
+                print(f"  ✅ {name} done")
+                return result
+            except asyncio.TimeoutError:
+                print(f"  ⏰ {name} TIMED OUT (600s)")
+                # Set frame events so dependent tasks don't hang forever
+                return None
+            except Exception as e:
+                print(f"  ❌ {name} FAILED: {e}")
+                return None
+
+        named_tasks = []
+        for camera in camera_tree:
+            shot_idxs = [camera.first_shot_idx] + [s for s in range(len(shot_descriptions)) if shot_descriptions[s].cam_idx == camera.idx and s != camera.first_shot_idx]
+            name = f"camera_{camera.idx}(shots {shot_idxs})"
+            named_tasks.append(_run_named(name, self.generate_frames_for_single_camera(
                 camera=camera,
                 shot_descriptions=shot_descriptions,
                 characters=characters,
                 character_portraits_registry=character_portraits_registry,
                 priority_shot_idxs=priority_shot_idxs,
-            )
-            for camera in camera_tree
-        ]
-        video_tasks = [
-            self.generate_video_for_single_shot(shot_description=sd)
-            for sd in shot_descriptions
-        ]
-        tasks.extend(video_tasks)
-        await asyncio.gather(*tasks, return_exceptions=True)
+            )))
+        for sd in shot_descriptions:
+            named_tasks.append(_run_named(f"video_shot_{sd.idx}", self.generate_video_for_single_shot(shot_description=sd)))
+
+        results = await asyncio.gather(*named_tasks, return_exceptions=True)
+        # Log any unhandled exceptions
+        for r in results:
+            if isinstance(r, Exception):
+                print(f"  ❌ Unhandled: {r}")
 
         # Concatenate videos and mux narration
         final_video_path = os.path.join(self.working_dir, "final_video_narrated.mp4")

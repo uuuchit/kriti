@@ -64,6 +64,8 @@ class VideoGeneratorVeoGoogleAPI:
             raise ValueError("The number of reference images must be no more than 2")
 
         logging.info(f"Calling {params['model']} to generate video...")
+        print(f"  [VEO] prompt={prompt[:200]}...")
+        print(f"  [VEO] refs={len(reference_image_paths)} duration={duration}s aspect={config_params['aspect_ratio']}")
 
         # Apply rate limiting if configured
         if self.rate_limiter:
@@ -75,11 +77,21 @@ class VideoGeneratorVeoGoogleAPI:
 
         for attempt in range(max_retries):
             try:
-                operation = self.client.models.generate_videos(
-                    **params,
-                    config=types.GenerateVideosConfig(**config_params),
+                operation = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.models.generate_videos,
+                        **params,
+                        config=types.GenerateVideosConfig(**config_params),
+                    ),
+                    timeout=60,
                 )
                 break
+            except asyncio.TimeoutError:
+                if attempt < max_retries - 1:
+                    logging.warning(f"generate_videos timed out, retrying... ({attempt+1}/{max_retries})")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    raise RuntimeError("generate_videos timed out after all retries")
             except ClientError as e:
                 if hasattr(e, 'status_code') and e.status_code == 429 and attempt < max_retries - 1:
                     wait_time = retry_delay * (2 ** attempt)
@@ -92,10 +104,20 @@ class VideoGeneratorVeoGoogleAPI:
                 else:
                     raise
 
+        max_poll = 300  # 5 min timeout
+        elapsed = 0
         while not operation.done:
-            await asyncio.sleep(2)
-            operation = self.client.operations.get(operation)
-            logging.info(f"Video generation not completed, waiting 2 seconds...")
+            await asyncio.sleep(5)
+            elapsed += 5
+            if elapsed >= max_poll:
+                raise RuntimeError(f"Video generation timed out after {max_poll}s")
+            try:
+                operation = await asyncio.wait_for(
+                    asyncio.to_thread(self.client.operations.get, operation),
+                    timeout=30,
+                )
+            except asyncio.TimeoutError:
+                raise RuntimeError("Veo poll request timed out (30s)")
 
         # Check if operation completed successfully
         if operation.error:
@@ -109,12 +131,21 @@ class VideoGeneratorVeoGoogleAPI:
             raise RuntimeError(error_msg)
 
         if not hasattr(operation.response, 'generated_videos') or not operation.response.generated_videos:
+            if reference_image_paths:
+                logging.warning("Veo returned no videos with reference images — retrying as text-to-video...")
+                return await self.generate_single_video(
+                    prompt=prompt,
+                    reference_image_paths=[],
+                    resolution=resolution,
+                    aspect_ratio=aspect_ratio,
+                    duration=duration,
+                )
             error_msg = "Video generation completed but no videos were generated"
             logging.error(error_msg)
             raise RuntimeError(error_msg)
 
         generated_video = operation.response.generated_videos[0]
-        self.client.files.download(file=generated_video.video)
+        await asyncio.to_thread(self.client.files.download, file=generated_video.video)
 
         video_output = VideoOutput(
             fmt="bytes",

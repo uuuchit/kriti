@@ -16,19 +16,19 @@ from utils.retry import after_func
 
 prompt_template_front = \
 """
-Generate a full-body, front-view portrait of character {identifier} based on the following description, with a pure white background. The character should be centered in the image, occupying most of the frame. Gazing straight ahead. Standing with arms relaxed at sides. Natural expression.
+Generate a full-body, front-view portrait of a fictional character based on the following description, with a pure white background. The character should be centered in the image, occupying most of the frame. Gazing straight ahead. Standing with arms relaxed at sides. Natural expression.
 Features: {features}
 Style: {style}
 """
 
 prompt_template_side = \
 """
-Generate a full-body, side-view portrait of character {identifier} based on the provided front-view portrait, with a pure white background. The character should be centered in the image, occupying most of the frame. Facing left. Standing with arms relaxed at sides.
+Generate a full-body, side-view portrait of the same fictional character based on the provided front-view portrait, with a pure white background. The character should be centered in the image, occupying most of the frame. Facing left. Standing with arms relaxed at sides.
 """
 
 prompt_template_back = \
 """
-Generate a full-body, back-view portrait of character {identifier} based on the provided front-view portrait, with a pure white background. The character should be centered in the image, occupying most of the frame. No facial features should be visible.
+Generate a full-body, back-view portrait of the same fictional character based on the provided front-view portrait, with a pure white background. The character should be centered in the image, occupying most of the frame. No facial features should be visible.
 """
 
 
@@ -48,7 +48,6 @@ class CharacterPortraitsGenerator:
     ) -> ImageOutput:
         features = "(static) " + (character.static_features or "") + "; (dynamic) " + (character.dynamic_features or "")
         prompt = prompt_template_front.format(
-            identifier=character.identifier_in_scene,
             features=features,
             style=style,
         )
@@ -65,7 +64,7 @@ class CharacterPortraitsGenerator:
         front_image_path: str,
     ) -> ImageOutput:
         prompt = prompt_template_side.format(
-            identifier=character.identifier_in_scene,
+
         )
         image_output = await self.image_generator.generate_single_image(
             prompt=prompt,
@@ -82,7 +81,7 @@ class CharacterPortraitsGenerator:
         front_image_path: str,
     ) -> ImageOutput:
         prompt = prompt_template_back.format(
-            identifier=character.identifier_in_scene,
+
         )
         image_output = await self.image_generator.generate_single_image(
             prompt=prompt,

@@ -28,6 +28,39 @@ class Narration2VideoPipeline(Script2VideoNarrationPipeline):
     via TTS duration per shot and sequential mux.
     """
 
+    @staticmethod
+    def _fix_narration_text(storyboard, narration: str):
+        """Ensure every shot has narration_text from the original narration.
+
+        If the LLM left narration_text null, split the original narration
+        into sentences and distribute them across shots in order.
+        """
+        filled = [s for s in storyboard if s.narration_text and s.narration_text.strip()]
+        if len(filled) >= len(storyboard) * 0.8:
+            return storyboard  # mostly filled, trust it
+
+        print(f"⚠️ Only {len(filled)}/{len(storyboard)} shots have narration_text — re-splitting from original narration.")
+        import re
+        # Split on sentence boundaries (period, newline, |, ।)
+        sentences = [s.strip() for s in re.split(r'[।\.\n\|]+', narration) if s.strip()]
+
+        n_shots = len(storyboard)
+        n_sents = len(sentences)
+
+        if n_sents >= n_shots:
+            # More sentences than shots — group sentences into shots
+            per_shot = n_sents / n_shots
+            for i, shot in enumerate(storyboard):
+                start = int(i * per_shot)
+                end = int((i + 1) * per_shot)
+                shot.narration_text = ' '.join(sentences[start:end])
+        else:
+            # Fewer sentences than shots — assign one sentence per shot, empty for extras
+            for i, shot in enumerate(storyboard):
+                shot.narration_text = sentences[i] if i < n_sents else ''
+
+        return storyboard
+
     async def __call__(
         self,
         narration: str,
@@ -72,6 +105,8 @@ class Narration2VideoPipeline(Script2VideoNarrationPipeline):
                 user_requirement=user_requirement,
                 style=style,
             )
+            # Validate narration_text coverage — LLM sometimes leaves them null
+            storyboard = self._fix_narration_text(storyboard, narration)
             with open(storyboard_path, "w", encoding="utf-8") as f:
                 json.dump([s.model_dump() for s in storyboard], f, ensure_ascii=False, indent=4)
             print(f"✅ Designed storyboard and saved to {storyboard_path}.")
@@ -126,7 +161,7 @@ class Narration2VideoPipeline(Script2VideoNarrationPipeline):
                 logging.warning(f"Shot {sd.idx} video missing, skipping.")
                 continue
 
-            vclip = VideoFileClip(vpath)
+            vclip = VideoFileClip(vpath).without_audio()
             narr_dur = self._shot_durations.get(sd.idx, vclip.duration)
 
             if vclip.duration > narr_dur:

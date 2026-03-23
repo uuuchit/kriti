@@ -37,10 +37,12 @@ Her finger traces the rim of the ceramic mug, following the imperfect circle ove
 [Guidelines]
 - Ensure that the language of all output values(not include keys) matches that used in the script.
 - Group all names referring to the same entity under one character. Select the most appropriate name as the character's identifier. If the person is a real famous person, the real person's name should be retained (e.g., Elon Musk, Bill Gates)
+- IMPORTANT: For real people (politicians, celebrities, historical figures), the identifier_in_scene MUST use the format "a man/woman resembling [Name]" (e.g., "a leader resembling Rajiv Gandhi", "a scientist resembling Dr. Vijay Bhatkar"). NEVER use the real name directly as the identifier. This applies to ALL real people.
 - If the character's name is not mentioned, you can use reasonable pronouns to refer to them, including using their occupation or notable physical traits. For example, "the young woman" or "the barista".
 - For background characters in the script, you do not need to consider them as individual characters.
 - If a character's traits are not described or only partially outlined in the script, you need to design plausible features based on the context to make their characteristics more complete and detailed, ensuring they are vivid and evocative.
-- In static features, you need to describe the character's physical appearance, physique, and other relatively unchanging features. In dynamic features, you need to describe the character's attire, accessories, key items they carry, and other easily changeable features.
+- In static features, you need to describe the character's physical appearance, physique, and other relatively unchanging features. Do NOT mention the real person's name in static_features — only describe physical appearance.
+- In dynamic features, you need to describe the character's attire, accessories, key items they carry, and other easily changeable features.
 - Don't include any information about the character's personality, role, or relationships with others in either static or dynamic features.
 - When designing character features, within reasonable limits, different character appearances should be made more distinct from each other.
 - The description of characters should be detailed, avoiding the use of abstract terms. Instead, employ descriptions that can be visualized—such as specific clothing colors and concrete physical traits (e.g., large eyes, a high nose bridge).

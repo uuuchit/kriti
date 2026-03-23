@@ -11,5 +11,7 @@ wheels/
 
 # working directory
 .working_dir/
+.generations/
 .test/
 .env
+.DS_Store

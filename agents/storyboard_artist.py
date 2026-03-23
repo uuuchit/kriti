@@ -124,11 +124,11 @@ human_prompt_template_decompose_visual_description = \
 
 system_prompt_template_design_storyboard_from_narration = """
 [Role]
-You are a professional storyboard artist specializing in narration-driven video. Your task is to convert narration/voiceover text into a storyboard where each shot has exactly one narration phrase and a matching visual.
+You are a professional storyboard artist specializing in narration-driven video. Your task is to convert narration/voiceover text into a visually dynamic storyboard where each shot has exactly one narration phrase and a matching visual.
 
 [Task]
 Split the narration into contiguous visual beats. For each beat, produce one shot with:
-1. visual_desc: What the viewer sees (cinematic image description)
+1. visual_desc: What the viewer sees (cinematic image description with CAMERA MOVEMENT and SUBJECT ACTION)
 2. audio_desc: Audio description for the shot (e.g. [Narrator]: summary of what is spoken)
 3. narration_text: The EXACT raw narration text spoken during this shot. Plain text only — NO speaker tags, NO brackets, NO quotes. Copy the text verbatim from the narration input.
 
@@ -137,6 +137,19 @@ Split the narration into contiguous visual beats. For each beat, produce one sho
 - Each shot gets exactly one phrase in narration_text. That phrase will be spoken during that shot only.
 - narration_text must be the EXACT substring from the input narration — plain text, no formatting.
 - The visual_desc must depict what is described or implied by that phrase.
+
+[Shot Duration Rule - CRITICAL]
+- Each narration phrase should be 4-8 seconds when spoken aloud (roughly 10-25 words in Hindi, 8-20 words in English).
+- If a narration segment would take longer than 8 seconds, SPLIT it into multiple shots with different camera angles or subjects.
+- NEVER put more than ~25 Hindi words or ~20 English words in a single shot's narration_text.
+- Prefer MORE shots with SHORTER narrations over fewer shots with longer narrations.
+
+[Visual Dynamism - CRITICAL]
+- EVERY shot MUST have camera movement. NEVER use "static camera". Always specify one of: slow push-in, pull-out, dolly, pan left/right, tilt up/down, tracking shot, crane, orbit, zoom.
+- EVERY shot MUST have subject/element motion: characters gesturing, objects moving, particles, light shifts, environmental changes.
+- Vary shot types aggressively between consecutive shots: alternate between wide/medium/close-up/extreme close-up.
+- Vary camera angles: eye-level, low angle, high angle, bird's eye, dutch angle.
+- Use visual transitions in the description: "camera sweeps from X to reveal Y", "focus racks from foreground to background".
 
 [Input]
 - Narration: The full narration text enclosed in <NARRATION> and </NARRATION>
@@ -149,7 +162,7 @@ Split the narration into contiguous visual beats. For each beat, produce one sho
 
 [Guidelines]
 - Use cinematic language: shot types (close-up, medium, wide), angles (eye-level, high, low), composition, lighting.
-- First shot must be a wide establishing shot when there are multiple shots.
+- First shot should be a wide establishing shot with a slow camera movement (e.g. slow dolly forward, crane down).
 - Keep character names in angle brackets in visual_desc (e.g. <Traveler>). ff_vis_char_idxs and lf_vis_char_idxs refer to character list indices.
 - If no characters, use ff_vis_char_idxs=[] and lf_vis_char_idxs=[].
 - Use as few camera positions (cam_idx) as possible. Reuse camera when shot size/angle are similar.

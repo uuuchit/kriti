@@ -38,6 +38,11 @@ class ImageGeneratorNanobananaGoogleAPI:
             aspect_ratio: The aspect ratio of the image.
         """
 
+        # Sanitize: strip real person names that Imagen may block
+        import re
+        prompt = re.sub(r'\b(Rajiv Gandhi|Narendra Modi|Indira Gandhi|Mahatma Gandhi|Nehru)\b', 'a leader', prompt, flags=re.IGNORECASE)
+        prompt = re.sub(r'<([^>]+)>', 'a person', prompt)
+
         logging.info(f"Calling {self.model} to generate image...")
 
         # Apply rate limiting if configured
